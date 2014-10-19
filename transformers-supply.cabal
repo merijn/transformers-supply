@@ -1,8 +1,8 @@
 Name:                transformers-supply
 Version:             0.1.0
 
-Homepage:            
-Bug-Reports:         https://bitbucket.org/merijnv/transformers-supply/issues
+Homepage:            https://github.com/merijn/transformers-supply
+Bug-Reports:         https://github.com/merijn/transformers-supply/issues
 
 Author:              Merijn Verstraaten
 Maintainer:          Merijn Verstraaten <merijn@inconsistent.nl>
@@ -58,9 +58,13 @@ Library
                ,        mtl >= 2.1
 
 Source-Repository head
-  Type:     mercurial
-  Location: https://bitbucket.org/merijnv/transformers-supply
+  Type:     git
+  Location: ssh://github.com:merijn/transformers-supply.git
 
 Source-Repository head
   Type:     mercurial
   Location: git+ssh://github.com:merijn/transformers-supply.git
+
+Source-Repository head
+  Type:     mercurial
+  Location: https://bitbucket.org/merijnv/transformers-supply
