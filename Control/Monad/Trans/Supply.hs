@@ -1,3 +1,9 @@
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE UndecidableInstances #-}
 -------------------------------------------------------------------------------
 -- |
 -- Module      :  Control.Monad.Trans.Supply
@@ -54,7 +60,12 @@ module Control.Monad.Trans.Supply (
 
 import Control.Applicative
 import Control.Monad
+import Control.Monad.Signatures
+import Control.Monad.Error.Class (MonadError(..))
+import Control.Monad.Reader.Class (MonadReader(..))
+import Control.Monad.State.Class (MonadState(..))
 import Control.Monad.Trans
+import Control.Monad.Writer.Class (MonadWriter(..))
 import Data.Functor.Identity
 
 -- $why-monad
@@ -108,12 +119,12 @@ instance (Functor m, Monad m) => Applicative (SupplyT s m) where
 
 instance (Functor m, Monad m) => Monad (SupplyT s m) where
     return = pure
-    SupplyT m >>= f = SupplyT $ m >>= \v -> case v of
-        Done a -> unwrapSupplyT (f a)
-        More g -> return . More $ g >=> f
+    SupplyT m >>= f = SupplyT $ m >>= \case
+      Done a -> unwrapSupplyT (f a)
+      More g -> return . More $ g >=> f
 
 instance MonadTrans (SupplyT s) where
-    lift = SupplyT . liftM Done
+    lift = SupplyT . fmap Done
 
 instance (Alternative m, Monad m) => Alternative (SupplyT s m) where
     empty = SupplyT empty
@@ -131,7 +142,7 @@ instance (Functor m, MonadIO m) => MonadIO (SupplyT s m) where
 
 -- | Supply a construction function with an @s@ value from the supply.
 supply :: Monad m => (s -> m a) -> SupplyT s m a
-supply f = SupplyT . return . More $ SupplyT . liftM Done . f
+supply f = SupplyT . return . More $ SupplyT . fmap Done . f
 
 -- | Supply a non-monadic construction function with an @s@ value from the
 -- supply and automatically lift its result into the @m@ monad that 'SupplyT'
@@ -164,9 +175,9 @@ runSupply act gen = runIdentity . runSupplyT act gen
 -- | Run a supply consuming computation, using a generation function and
 -- initial value to compute the values consumed by the 'SupplyT' computation.
 runSupplyT :: Monad m => SupplyT s m a -> (s -> s) -> s -> m a
-runSupplyT (SupplyT m) gen s = join $ liftM go m
-    where go (Done x) = return x
-          go (More f) = runSupplyT (f s) gen (gen s)
+runSupplyT (SupplyT m) gen s = m >>= \case
+  Done x -> return x
+  More f -> runSupplyT (f s) gen (gen s)
 
 -- | Feed a supply consuming computation from a list until the computation
 -- finishes or the list runs out. If the list does not contain sufficient
@@ -178,21 +189,39 @@ runListSupply sink l = runIdentity $ runListSupplyT sink l
 -- finishes or the list runs out. If the list does not contain sufficient
 -- elements, @runListSupplyT@ returns uncompleted computation.
 runListSupplyT :: Monad m => SupplyT s m a -> [s] -> m (Either (SupplyT s m a) a)
-runListSupplyT (SupplyT m) [] = return $ Left (SupplyT m)
-runListSupplyT (SupplyT m) (s:ss) = join $ liftM go m
-    where go (Done x) = return (Right x)
-          go (More f) = runListSupplyT (f s) ss
+runListSupplyT (SupplyT m) []     = return $ Left (SupplyT m)
+runListSupplyT (SupplyT m) (s:ss) = m >>= \case
+  Done x -> return (Right x)
+  More f -> runListSupplyT (f s) ss
 
 -- | Feed a supply consuming computation from a monadic action until the
 -- computation finishes.
 runMonadSupply :: Monad m => Supply s a -> m s -> m a
-runMonadSupply (SupplyT m) src = go $ runIdentity m
-    where go (Done x) = return x
-          go (More f) = src >>= \s -> runMonadSupply (f s) src
+runMonadSupply (SupplyT m) src = case runIdentity m of
+  Done x -> return x
+  More f -> src >>= \s -> runMonadSupply (f s) src
 
 -- | Feed a supply consuming computation from a monadic action until the
 -- computation finishes.
 runMonadSupplyT :: Monad m => SupplyT s m a -> m s -> m a
-runMonadSupplyT (SupplyT m) src = join $ liftM go m
-    where go (Done x) = return x
-          go (More f) = src >>= \s -> runMonadSupplyT (f s) src
+runMonadSupplyT (SupplyT m) src = m >>= \case
+  Done x -> return x
+  More f -> src >>= \s -> runMonadSupplyT (f s) src
+
+-------------------------------------------------------------------------------
+-- Lifting other operations
+
+-- | Lift a @catchE@ operation to the new monad.
+liftCatch :: Catch e m (Consumer s m a) -> Catch e (SupplyT s m) a
+liftCatch catchE (SupplyT m) h = SupplyT (m `catchE` (unwrapSupplyT .  h))
+
+-------------------------------------------------------------------------------
+-- Lifting monad transformers
+
+instance MonadError e m => MonadError e (SupplyT s m) where
+  throwError = lift . throwError
+  catchError = liftCatch catchError
+
+instance MonadReader r m => MonadReader r (SupplyT s m) where
+  ask     = lift ask
+  local k = SupplyT . local k . unwrapSupplyT

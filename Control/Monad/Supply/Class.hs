@@ -1,6 +1,5 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FunctionalDependencies #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE UndecidableInstances #-}
 -------------------------------------------------------------------------------
 -- |
@@ -20,9 +19,8 @@ module Control.Monad.Supply.Class (
 
 import Control.Monad.Trans
 import Control.Monad.Trans.Cont
-import Control.Monad.Trans.Error
+import Control.Monad.Trans.Except
 import Control.Monad.Trans.Identity
-import Control.Monad.Trans.List
 import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.Reader
 import qualified Control.Monad.Trans.RWS.Lazy as LazyRWS
@@ -33,8 +31,6 @@ import Control.Monad.Trans.Supply (SupplyT)
 import qualified Control.Monad.Trans.Supply as Supply
 import Control.Monad.Trans.Writer.Lazy as Lazy
 import Control.Monad.Trans.Writer.Strict as Strict
-
-import Data.Monoid
 
 -- | The 'MonadSupply' class provides access to the functions needed to
 -- construct supply-consuming computations in a monad transformer stack.
@@ -60,15 +56,11 @@ instance MonadSupply s f m => MonadSupply s f (ContT r m) where
     supply = lift . supply
     provide = lift . provide
 
-instance (Error e, MonadSupply s f m) => MonadSupply s f (ErrorT e m) where
+instance (MonadSupply s f m) => MonadSupply s f (ExceptT e m) where
     supply = lift . supply
     provide = lift . provide
 
 instance MonadSupply s f m => MonadSupply s f (IdentityT m) where
-    supply = lift . supply
-    provide = lift . provide
-
-instance MonadSupply s f m => MonadSupply s f (ListT m) where
     supply = lift . supply
     provide = lift . provide
 
